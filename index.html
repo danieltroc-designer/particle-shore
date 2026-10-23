@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Particle Shore</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Cg fill='%23eee'%3E%3Ccircle cx='9' cy='18' r='1.4'/%3E%3Ccircle cx='14' cy='15' r='1.8'/%3E%3Ccircle cx='19' cy='13' r='2.2'/%3E%3Ccircle cx='24' cy='14' r='1.4'/%3E%3Ccircle cx='12' cy='21' r='1'/%3E%3Ccircle cx='17' cy='19' r='1.2'/%3E%3Ccircle cx='22' cy='18' r='1'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <section id="main">
+      <header id="topbar">
+        <div class="brand"><span class="mark" aria-hidden="true"></span>Particle Shore</div>
+        <div class="tools">
+          <button class="icon" id="undo" title="Undo (⌘Z)" aria-label="Undo">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+          </button>
+          <button class="icon" id="redo" title="Redo (⇧⌘Z)" aria-label="Redo">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>
+          </button>
+          <span class="sep"></span>
+          <div class="seg" id="viewseg">
+            <button data-view="fit" title="Fit to window (F)">Fit</button>
+            <button data-view="actual" title="Inspect actual export pixels (1)">100%</button>
+          </div>
+          <span class="sep"></span>
+          <button id="seed" title="New seed (S)">New seed</button>
+          <button id="shuffle" title="Randomize the shape (R)">Randomize</button>
+          <button id="png" class="primary" title="Export PNG (E)">Export PNG</button>
+        </div>
+      </header>
+      <div id="stage">
+        <canvas id="view"></canvas>
+        <div id="hint"></div>
+      </div>
+      <footer id="status"><span id="st-left"></span><span id="st-right"></span></footer>
+    </section>
+    <aside id="panel" aria-label="Controls"></aside>
+  </div>
+
+  <div id="overlay" hidden>
+    <div class="ov-box">
+      <div class="ov-label"></div>
+      <div class="ov-bar"><i></i></div>
+    </div>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="drop" hidden><div>Drop a Particle Shore PNG, SVG or JSON to load its settings</div></div>
+  <input type="file" id="file" accept=".json,.png,.svg,application/json,image/png,image/svg+xml" hidden>
+
+  <script>
+    if (location.protocol === 'file:') {
+      document.body.insertAdjacentHTML('beforeend', '<div class="fatal"><div><strong>Open Particle Shore through a local server</strong><p>Run <code>node serve.mjs</code> in this folder, then visit http://localhost:5178</p></div></div>');
+    }
+  </script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
