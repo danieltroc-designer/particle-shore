@@ -50,6 +50,7 @@ export function fieldFS(scene) {
 precision highp float;
 precision highp int;
 uniform vec2 u_vOut;
+uniform float u_frameK;
 uniform vec2 u_fieldOrigin;
 uniform float u_fieldTexel;
 uniform float u_seed;
@@ -65,7 +66,7 @@ void main() {
   vec2 px = u_fieldOrigin + gl_FragCoord.xy * u_fieldTexel;
   vec2 n = px / u_vOut;
   float aspect = u_vOut.x / u_vOut.y;
-  vec2 p = vec2((n.x - 0.5) * 2.0 * aspect, (0.5 - n.y) * 2.0);
+  vec2 p = vec2((n.x - 0.5) * 2.0 * aspect, (0.5 - n.y) * 2.0) * u_frameK;
   vec2 q = rot2(-u_comp.w) * (p - u_comp.xy) / u_comp.z;
   vec2 r = scene(q);
   float L = isnan(r.x) ? 0.0 : max(r.x, 0.0);

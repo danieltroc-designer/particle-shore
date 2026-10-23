@@ -20,6 +20,7 @@
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>
           </button>
           <span class="sep"></span>
+          <select id="frame" title="Frame and export size" aria-label="Frame size"></select>
           <div class="seg" id="viewseg">
             <button data-view="fit" title="Fit to window (F)">Fit</button>
             <button data-view="actual" title="Inspect actual export pixels (1)">100%</button>
@@ -31,7 +32,14 @@
         </div>
       </header>
       <div id="stage">
-        <canvas id="view"></canvas>
+        <div id="frame-wrap">
+          <canvas id="view"></canvas>
+          <div id="guide" hidden aria-hidden="true">
+            <div class="g-avatar"></div>
+            <div class="g-name"><span>Artist name</span></div>
+            <div class="g-sub"><span>City, Country</span></div>
+          </div>
+        </div>
         <div id="hint"></div>
       </div>
       <footer id="status"><span id="st-left"></span><span id="st-right"></span></footer>

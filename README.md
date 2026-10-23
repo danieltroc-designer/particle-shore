@@ -46,8 +46,14 @@ Settings persist in the browser between sessions.
 
 ## Export
 
-- **PNG** — 4K UHD by default (also DCI 4K, 5K, 8K, HD). Rendered in 2048 px
-  tiles and encoded in the browser, optionally with a transparent background.
+- **PNG** — 4K UHD by default (also DCI 4K, 5K, 8K, HD and a 2480 × 520
+  SoundCloud banner). Rendered in 2048 px tiles and encoded in the browser,
+  optionally with a transparent background.
+- **Frame** — pick the size from the top bar to preview it. Every size shows the
+  same 16:9 composition cropped to fill the frame, so the banner is a strip
+  through its middle (drag or pinch to recompose). The SoundCloud frame can show
+  an approximate profile guide — avatar and name placement — that is never
+  exported.
 - **SVG** — samples a particle budget (10k–1M) from the same shader and enlarges
   the dots so the overall brightness matches the raster. Choose circles (best
   compatibility) or compact paths (smaller files), varied or solid opacity.

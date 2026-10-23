@@ -6,6 +6,7 @@ export const RESOLUTIONS = [
   { id: '5120x2880', label: '5K · 5120 × 2880', short: '5K', w: 5120, h: 2880 },
   { id: '7680x4320', label: '8K · 7680 × 4320', short: '8K', w: 7680, h: 4320 },
   { id: '1920x1080', label: 'HD · 1920 × 1080', short: 'HD', w: 1920, h: 1080 },
+  { id: '2480x520', label: 'SoundCloud banner · 2480 × 520', short: 'SoundCloud', w: 2480, h: 520, guide: 'soundcloud' },
 ];
 
 // Sizes and distances are in 4K pixels; other resolutions scale them.

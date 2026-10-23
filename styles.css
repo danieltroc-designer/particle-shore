@@ -140,6 +140,47 @@ button.primary:hover { background: #fff; border-color: #fff; }
     radial-gradient(ellipse at 50% 40%, #121214 0%, var(--stage) 70%);
 }
 
+#frame-wrap { position: relative; }
+
+/* Approximate SoundCloud profile header: 1240×260 with a 200 px avatar. */
+#guide {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  container-type: size;
+  font-family: var(--sans);
+  line-height: 1.25;
+}
+#guide[hidden] { display: none; }
+.g-avatar {
+  position: absolute;
+  left: 2.42%;
+  top: 11.54%;
+  height: 76.92%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #ffffff14;
+  border: 1px dashed #ffffffb0;
+}
+.g-name, .g-sub { position: absolute; left: 20.97%; }
+.g-name { top: 11.54%; }
+.g-sub { top: 28%; }
+.g-name span, .g-sub span {
+  display: inline-block;
+  padding: 0.15em 0.4em;
+  background: #000000cc;
+  color: #fff;
+  font-size: 9cqh;
+}
+.g-sub span { font-size: 6cqh; color: #ccc; }
+
+.tools select {
+  width: auto;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+}
+
 #view {
   display: block;
   box-shadow: 0 0 0 1px #ffffff14, 0 24px 80px #000c;

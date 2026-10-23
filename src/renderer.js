@@ -4,6 +4,7 @@ import { SCENE_MAP, sceneUniforms } from './scenes.js';
 // Reference frame: all sizes and densities are expressed in 4K pixels
 // (2160 px tall). Other output sizes render the same image at another scale.
 export const REF_H = 2160;
+const DESIGN_ASPECT = 16 / 9;
 const CELL = 16;          // candidate grid cell, in reference px
 const CHUNK = 1 << 22;    // vertices per draw call
 const TF_CHUNK = 1 << 20; // vertices per transform-feedback readback
@@ -60,6 +61,19 @@ class Program {
     }
     return this;
   }
+}
+
+// Every output shows the same 16:9 design frame, cropped to cover it, so a
+// wide banner is a strip through the middle of the composition.
+// frameK: visible fraction of the design frame's height.
+export function frameK(w, h) {
+  const a = w / h;
+  return a > DESIGN_ASPECT ? DESIGN_ASPECT / a : 1;
+}
+
+// Virtual px per reference px when rendering a w×h output at full size.
+export function refScale(w, h) {
+  return h / frameK(w, h) / REF_H;
 }
 
 export function hexToRgb(hex) {
@@ -190,6 +204,7 @@ export class Renderer {
     gl.disable(gl.BLEND);
     this.fieldProgram(state.scene).use().set({
       u_vOut: vOut,
+      u_frameK: frameK(vOut[0], vOut[1]),
       u_fieldOrigin: [ox, oy],
       u_fieldTexel: fieldTexel,
       u_seed: state.seed,
@@ -206,7 +221,7 @@ export class Renderer {
   layout(state, spec, margin) {
     const P = state.particles;
     const [rx, ry, rw, rh] = spec.region;
-    const cellSize = CELL * Math.max(spec.vScale, 1);
+    const cellSize = CELL * spec.vScale;
     const perCell = Math.max(1, Math.round(P.density * CELL * CELL));
     const cx0 = Math.floor((rx - margin) / cellSize), cy0 = Math.floor((ry - margin) / cellSize);
     const cx1 = Math.floor((rx + rw + margin) / cellSize), cy1 = Math.floor((ry + rh + margin) / cellSize);
@@ -407,7 +422,7 @@ export class Renderer {
   // Particles for vector export: fewer, larger dots that keep the same
   // average light as the raster render.
   sampleParticles(state, { vOut, budget, dotScale }) {
-    const vScale = vOut[1] / REF_H;
+    const vScale = refScale(vOut[0], vOut[1]);
     const spec = { vOut, region: [0, 0, vOut[0], vOut[1]], vScale, fieldTexel: Math.max(1, Math.round(2 * vScale)) };
     const field = this.prepareField(state, spec, 'svg');
     const refArea = (vOut[0] * vOut[1]) / (vScale * vScale);

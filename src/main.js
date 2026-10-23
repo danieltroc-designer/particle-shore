@@ -1,4 +1,4 @@
-import { Renderer, REF_H, hexToRgb } from './renderer.js';
+import { Renderer, hexToRgb, frameK, refScale } from './renderer.js';
 import { SCENES, SCENE_MAP, sceneDefaults } from './scenes.js';
 import { LOOK, RESOLUTIONS, PRESETS, defaultState, normalizeState, applyPreset } from './params.js';
 import { h, section, subhead, slider, colorRow, toggleRow, selectRow } from './ui.js';
@@ -113,7 +113,7 @@ function resolution() {
 
 function viewSpec(quality) {
   const { w: W, h: H } = resolution();
-  const exportScale = H / REF_H;
+  const exportScale = refScale(W, H);
   if (view.mode === 'actual') {
     const rw = Math.min(canvas.width, W), rh = Math.min(canvas.height, H);
     let rx = Math.round(view.cx * W - rw / 2), ry = Math.round(view.cy * H - rh / 2);
@@ -121,10 +121,11 @@ function viewSpec(quality) {
     ry = clamp(ry, 0, H - rh);
     return { vOut: [W, H], region: [rx, ry, rw, rh], vScale: exportScale, fieldTexel: Math.max(1, Math.round(2 * exportScale)) };
   }
+  // preview at most at 4K-equivalent; drafts at roughly canvas resolution
   let scale = Math.min(exportScale, 1);
-  if (quality === 'draft') scale = Math.min(scale, Math.max(0.3, (canvas.height / REF_H) * 0.75));
-  const vH = Math.round(REF_H * scale), vW = Math.round((vH * W) / H);
-  const vScale = vH / REF_H;
+  if (quality === 'draft') scale = Math.min(scale, Math.max(0.3, (canvas.height / H) * exportScale * 0.75));
+  const vH = Math.round((H * scale) / exportScale), vW = Math.round((W * scale) / exportScale);
+  const vScale = (exportScale * vH) / H;
   const fieldTexel = Math.max(1, 2 * vScale) * (quality === 'draft' ? 1.6 : 1);
   return { vOut: [vW, vH], region: [0, 0, vW, vH], vScale, fieldTexel };
 }
@@ -360,12 +361,13 @@ function buildPanel() {
   // Export
   const ex = section(panel, 'Export', 'export');
   ex.body.append(
-    selectRow('Size', RESOLUTIONS.map((r) => [r.id, r.label]), state.output, (v) => {
-      state.output = v;
-      layout();
-      requestRender('view');
-      commit();
-    }),
+    selectRow('Size', RESOLUTIONS.map((r) => [r.id, r.label]), state.output, setOutput),
+    resolution().guide ? toggleRow('Show profile guide', guideOn(), (v) => {
+      try {
+        localStorage.setItem(GUIDE_KEY, v ? '1' : '0');
+      } catch {}
+      syncFrameUI();
+    }) : null,
     h('button', { class: 'wide primary', onclick: exportPNG }, 'Export PNG'),
     subhead('Vector'),
     ...LOOK.svg.map((def) => bindSlider(def, state.svg, 'none')),
@@ -390,6 +392,35 @@ function buildPanel() {
     ),
     h('p', { class: 'note' }, 'Exported PNGs and SVGs carry their settings — drop one back on the window to restore it.'),
   );
+  syncFrameUI();
+}
+
+// ---------- frame size ----------
+
+const GUIDE_KEY = 'particle-shore:guide';
+const frameSelect = $('#frame');
+frameSelect.append(...RESOLUTIONS.map((r) => h('option', { value: r.id }, `${r.short} · ${r.w}×${r.h}`)));
+frameSelect.addEventListener('change', () => setOutput(frameSelect.value));
+
+function guideOn() {
+  try {
+    return localStorage.getItem(GUIDE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function syncFrameUI() {
+  frameSelect.value = state.output;
+  $('#guide').hidden = !(resolution().guide === 'soundcloud' && guideOn());
+}
+
+function setOutput(id) {
+  state.output = id;
+  buildPanel();
+  layout();
+  requestRender('view');
+  commit();
 }
 
 function syncControls(prefix, obj) {
@@ -462,7 +493,7 @@ async function exportPNG() {
   const W = res.w, H = res.h;
   const transparent = state.color.transparent;
   const ch = transparent ? 4 : 3;
-  const vScale = H / REF_H;
+  const vScale = refScale(W, H);
   const fieldTexel = Math.max(1, Math.round(2 * vScale));
   const stride = W * ch + 1;
   const TILE = 2048;
@@ -586,6 +617,12 @@ function fatal(msg) {
 
 // ---------- canvas interaction ----------
 
+// Composition units per CSS pixel of the preview (the design frame is 2 units tall).
+function designUnit(rect) {
+  const { w: W, h: H } = resolution();
+  return (2 * frameK(W, H)) / rect.height;
+}
+
 let drag = null;
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
@@ -598,8 +635,9 @@ canvas.addEventListener('pointermove', (e) => {
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   const rect = canvas.getBoundingClientRect();
   if (view.mode === 'fit') {
-    state.comp.x = clamp(drag.comp.x + (dx / rect.height) * 2, -3, 3);
-    state.comp.y = clamp(drag.comp.y - (dy / rect.height) * 2, -3, 3);
+    const u = designUnit(rect);
+    state.comp.x = clamp(drag.comp.x + dx * u, -3, 3);
+    state.comp.y = clamp(drag.comp.y - dy * u, -3, 3);
     syncControls('comp', state.comp);
     requestRender('shape', true);
   } else {
@@ -647,17 +685,18 @@ canvas.addEventListener('wheel', (e) => {
   const c = state.comp;
   if (e.ctrlKey || e.metaKey) {
     // zoom around the cursor
-    const aspect = rect.width / rect.height;
-    const px = ((e.clientX - rect.left) / rect.width - 0.5) * 2 * aspect;
-    const py = (0.5 - (e.clientY - rect.top) / rect.height) * 2;
+    const u = designUnit(rect);
+    const px = (e.clientX - rect.left - rect.width / 2) * u;
+    const py = (rect.height / 2 - (e.clientY - rect.top)) * u;
     const z1 = c.zoom;
     const z2 = clamp(z1 * Math.exp(-e.deltaY * 0.01), 0.2, 6);
     c.x = clamp(px - ((px - c.x) * z2) / z1, -3, 3);
     c.y = clamp(py - ((py - c.y) * z2) / z1, -3, 3);
     c.zoom = z2;
   } else {
-    c.x = clamp(c.x - (e.deltaX / rect.height) * 2, -3, 3);
-    c.y = clamp(c.y + (e.deltaY / rect.height) * 2, -3, 3);
+    const u = designUnit(rect);
+    c.x = clamp(c.x - e.deltaX * u, -3, 3);
+    c.y = clamp(c.y + e.deltaY * u, -3, 3);
   }
   syncControls('comp', c);
   requestRender('shape', true);
