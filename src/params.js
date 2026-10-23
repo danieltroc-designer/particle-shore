@@ -7,7 +7,31 @@ export const RESOLUTIONS = [
   { id: '7680x4320', label: '8K · 7680 × 4320', short: '8K', w: 7680, h: 4320 },
   { id: '1920x1080', label: 'HD · 1920 × 1080', short: 'HD', w: 1920, h: 1080 },
   { id: '2480x520', label: 'SoundCloud banner · 2480 × 520', short: 'SoundCloud', w: 2480, h: 520, guide: 'soundcloud' },
+  { id: 'custom', label: 'Custom size', short: 'Custom', custom: true },
 ];
+
+// Custom sizes: each side 16–16384 px, at most 64 megapixels (8K is 33).
+export const CUSTOM_LIMITS = { min: 16, max: 16384, maxPixels: 64e6 };
+
+export function clampCustom(w, h) {
+  const { min, max, maxPixels } = CUSTOM_LIMITS;
+  w = Math.round(Math.min(max, Math.max(min, +w || min)));
+  h = Math.round(Math.min(max, Math.max(min, +h || min)));
+  if (w * h > maxPixels) {
+    const k = Math.sqrt(maxPixels / (w * h));
+    w = Math.max(min, Math.floor(w * k));
+    h = Math.max(min, Math.floor(h * k));
+  }
+  return { w, h };
+}
+
+// The output size of a state, with custom dimensions filled in.
+export function resolutionOf(state) {
+  const r = RESOLUTIONS.find((x) => x.id === state.output) || RESOLUTIONS[0];
+  if (!r.custom) return r;
+  const { w, h } = clampCustom(state.custom.w, state.custom.h);
+  return { ...r, w, h, label: `Custom · ${w} × ${h}` };
+}
 
 // Sizes and distances are in 4K pixels; other resolutions scale them.
 export const LOOK = {
@@ -56,6 +80,7 @@ export function defaultState() {
     color: { bg: '#000000', ink: '#f3f1ec', inkShadow: '#f3f1ec', transparent: false },
     comp: defaults(LOOK.comp),
     output: '3840x2160',
+    custom: { w: 2400, h: 2400 },
     svg: { ...defaults(LOOK.svg), opacity: 'varied', geometry: 'circles' },
   };
 }
@@ -77,6 +102,7 @@ export function normalizeState(s) {
   const st = merge(defaultState(), s);
   if (!SCENE_MAP[st.scene]) st.scene = 'dunes';
   if (!RESOLUTIONS.some((r) => r.id === st.output)) st.output = RESOLUTIONS[0].id;
+  st.custom = clampCustom(st.custom.w, st.custom.h);
   return st;
 }
 
@@ -158,6 +184,7 @@ export function applyPreset(current, preset) {
   s.seed = preset.seed ?? s.seed;
   for (const k of ['particles', 'tone', 'color', 'comp']) merge(s[k], preset[k]);
   s.output = current.output;
+  s.custom = { ...current.custom };
   s.svg = structuredClone(current.svg);
   return s;
 }

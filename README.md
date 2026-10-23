@@ -39,7 +39,8 @@ the same particles.
 | `F` / `1` | Fit / 100% view |
 | `E` | Export PNG |
 | `⌘Z` / `⇧⌘Z` | Undo / redo |
-| `⌘S` | Save settings as JSON |
+| `⌘S` | Save to library |
+| `L` | Open / close the library |
 | Double-click a slider label | Reset that value |
 
 Settings persist in the browser between sessions.
@@ -49,6 +50,8 @@ Settings persist in the browser between sessions.
 - **PNG** — 4K UHD by default (also DCI 4K, 5K, 8K, HD and a 2480 × 520
   SoundCloud banner). Rendered in 2048 px tiles and encoded in the browser,
   optionally with a transparent background.
+- **Custom size** — choose *Custom size…* and type any width × height (16 to
+  16384 px per side, up to 64 megapixels).
 - **Frame** — pick the size from the top bar to preview it. Every size shows the
   same 16:9 composition cropped to fill the frame, so the banner is a strip
   through its middle (drag or pinch to recompose). The SoundCloud frame can show
@@ -61,6 +64,18 @@ Settings persist in the browser between sessions.
 Every PNG and SVG embeds its settings. Drop one back on the window (or use
 *Load…*) to restore the exact image.
 
+## Library
+
+**Save** (`⌘S`) keeps the current design — shape, look, colours and size — in
+your library with a thumbnail. Open it with **Library** (`L`) to open, rename,
+update or delete saved designs.
+
+The library lives in this browser (IndexedDB), so it is per browser and per
+site address. **Export all** downloads every design as one backup file;
+**Import…** (or dropping that file on the window) brings designs back on any
+browser or computer. Import also accepts single settings files and exported
+PNG/SVG images.
+
 ## Files
 
 - `src/scenes.js` — the shapes: GLSL plus their parameter definitions
@@ -69,6 +84,7 @@ Every PNG and SVG embeds its settings. Drop one back on the window (or use
 - `src/params.js` — global parameters, defaults and presets
 - `src/main.js`, `src/ui.js` — app state, panel and interaction
 - `src/png.js`, `src/svg.js` — exporters
+- `src/library.js` — saved designs (IndexedDB)
 
 To add a shape, add an entry to `SCENES` in `src/scenes.js`: a `params` list
 (each becomes a `uniform float u_<key>`) and a `glsl` string that defines

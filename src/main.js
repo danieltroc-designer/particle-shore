@@ -1,9 +1,10 @@
 import { Renderer, hexToRgb, frameK, refScale } from './renderer.js';
 import { SCENES, SCENE_MAP, sceneDefaults } from './scenes.js';
-import { LOOK, RESOLUTIONS, PRESETS, defaultState, normalizeState, applyPreset } from './params.js';
+import { LOOK, RESOLUTIONS, PRESETS, CUSTOM_LIMITS, defaultState, normalizeState, applyPreset, clampCustom, resolutionOf } from './params.js';
 import { h, section, subhead, slider, colorRow, toggleRow, selectRow } from './ui.js';
 import { encodePNG, readPNGText } from './png.js';
 import { buildSVG, readSVGMeta } from './svg.js';
+import { listDesigns, putDesign, deleteDesign, newId } from './library.js';
 
 const STORE_KEY = 'particle-shore:state:v1';
 const $ = (sel) => document.querySelector(sel);
@@ -108,7 +109,7 @@ function replaceState(next, message) {
 // ---------- rendering ----------
 
 function resolution() {
-  return RESOLUTIONS.find((r) => r.id === state.output) || RESOLUTIONS[0];
+  return resolutionOf(state);
 }
 
 function viewSpec(quality) {
@@ -362,6 +363,7 @@ function buildPanel() {
   const ex = section(panel, 'Export', 'export');
   ex.body.append(
     selectRow('Size', RESOLUTIONS.map((r) => [r.id, r.label]), state.output, setOutput),
+    resolution().custom ? h('div', { class: 'row custom-row' }, h('label', null, 'Width × height'), customSizeFields('panel')) : null,
     resolution().guide ? toggleRow('Show profile guide', guideOn(), (v) => {
       try {
         localStorage.setItem(GUIDE_KEY, v ? '1' : '0');
@@ -382,7 +384,7 @@ function buildPanel() {
     h('button', { class: 'wide', onclick: exportSVG }, 'Export SVG'),
     subhead('Settings'),
     h('div', { class: 'row buttons' },
-      h('button', { class: 'mini', onclick: saveJSON, title: 'Save settings as JSON (⌘S)' }, 'Save .json'),
+      h('button', { class: 'mini', onclick: saveJSON, title: 'Download these settings as a JSON file' }, 'Save .json'),
       h('button', { class: 'mini', onclick: () => $('#file').click() }, 'Load…'),
       h('button', { class: 'mini', onclick: copyJSON }, 'Copy'),
       h('button', {
@@ -399,8 +401,48 @@ function buildPanel() {
 
 const GUIDE_KEY = 'particle-shore:guide';
 const frameSelect = $('#frame');
-frameSelect.append(...RESOLUTIONS.map((r) => h('option', { value: r.id }, `${r.short} · ${r.w}×${r.h}`)));
+frameSelect.append(...RESOLUTIONS.map((r) => h('option', { value: r.id }, r.custom ? 'Custom size…' : `${r.short} · ${r.w}×${r.h}`)));
 frameSelect.addEventListener('change', () => setOutput(frameSelect.value));
+const topCustom = customSizeFields('top');
+frameSelect.after(topCustom);
+
+// Width × height fields for the custom size (top bar and Export panel).
+function customSizeFields(where) {
+  const field = (key, label) => {
+    const input = h('input', { type: 'text', class: 'num', inputmode: 'numeric', spellcheck: 'false', 'aria-label': label, 'data-key': key });
+    input.addEventListener('focus', () => input.select());
+    input.addEventListener('keydown', (e) => e.key === 'Enter' && input.blur());
+    input.addEventListener('change', () => setCustomSize({ ...state.custom, [key]: input.value }));
+    return input;
+  };
+  const el = h('span', { class: 'custom-size ' + where },
+    field('w', 'Custom width'),
+    h('span', { class: 'times' }, '×'),
+    field('h', 'Custom height'),
+    h('button', {
+      class: 'mini swap',
+      title: 'Swap width and height',
+      'aria-label': 'Swap width and height',
+      onclick: () => setCustomSize({ w: state.custom.h, h: state.custom.w }),
+    }, '⇄'),
+  );
+  el.update = () => {
+    for (const input of el.querySelectorAll('input')) input.value = String(state.custom[input.dataset.key]);
+  };
+  el.update();
+  return el;
+}
+
+function setCustomSize(size) {
+  const next = clampCustom(size.w, size.h);
+  const asked = Math.round(+size.w || 0) * Math.round(+size.h || 0);
+  state.custom = next;
+  if (next.w * next.h < asked) toast(`Custom sizes are limited to ${CUSTOM_LIMITS.max} px per side and 64 megapixels`, true);
+  buildPanel();
+  layout();
+  requestRender('view');
+  commit();
+}
 
 function guideOn() {
   try {
@@ -412,6 +454,8 @@ function guideOn() {
 
 function syncFrameUI() {
   frameSelect.value = state.output;
+  topCustom.hidden = !resolution().custom;
+  topCustom.update();
   $('#guide').hidden = !(resolution().guide === 'soundcloud' && guideOn());
 }
 
@@ -584,19 +628,227 @@ async function copyJSON() {
   }
 }
 
+// Settings JSON from a PNG/SVG export, a settings file or a library backup.
+async function readSettings(file) {
+  let text = null;
+  if (/\.png$/i.test(file.name) || file.type === 'image/png') text = readPNGText(await file.arrayBuffer(), 'particle-shore');
+  else if (/\.svg$/i.test(file.name) || file.type === 'image/svg+xml') text = readSVGMeta(await file.text());
+  else text = await file.text();
+  if (!text) throw new Error('no Particle Shore settings found in this file');
+  const obj = JSON.parse(text);
+  if (obj.app !== 'particle-shore' && obj.app !== 'particle-shore-library') throw new Error('not a Particle Shore file');
+  return obj;
+}
+
 async function loadFile(file) {
   try {
-    let text = null;
-    if (/\.png$/i.test(file.name) || file.type === 'image/png') text = readPNGText(await file.arrayBuffer(), 'particle-shore');
-    else if (/\.svg$/i.test(file.name) || file.type === 'image/svg+xml') text = readSVGMeta(await file.text());
-    else text = await file.text();
-    if (!text) throw new Error('no Particle Shore settings found in this file');
-    const obj = JSON.parse(text);
-    if (obj.app !== 'particle-shore') throw new Error('not a Particle Shore settings file');
+    const obj = await readSettings(file);
+    if (obj.app === 'particle-shore-library') {
+      openLibrary();
+      await importIntoLibrary([file]);
+      return;
+    }
     replaceState(obj, `Loaded ${file.name}`);
   } catch (e) {
     toast('Could not load: ' + e.message, true);
   }
+}
+
+// ---------- library ----------
+
+const libEl = $('#library');
+let libUrls = [];
+let currentDesignId = null;
+
+const libraryIsOpen = () => !libEl.hidden;
+const fmtDate = (t) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const defaultName = (st) => `${SCENE_MAP[st.scene].name} · ${resolutionOf(st).short}`;
+
+function openLibrary() {
+  libEl.hidden = false;
+  $('#lib-btn').classList.add('on');
+  renderLibrary();
+}
+
+function closeLibrary() {
+  libEl.hidden = true;
+  $('#lib-btn').classList.remove('on');
+  libUrls.forEach((u) => URL.revokeObjectURL(u));
+  libUrls = [];
+}
+
+// Small JPEG preview of a design, rendered at its own aspect ratio.
+function makeThumb(st) {
+  const r = resolutionOf(st);
+  const s = Math.min(480 / r.w, 300 / r.h);
+  const tw = Math.max(8, Math.round(r.w * s)), th = Math.max(8, Math.round(r.h * s));
+  const px = new Uint8Array(tw * th * 4);
+  renderer.renderTile(st, { vOut: [tw, th], region: [0, 0, tw, th], vScale: refScale(tw, th), fieldTexel: 1 }, false, px);
+  renderer.releaseSlot('tile');
+  const c = document.createElement('canvas');
+  c.width = tw;
+  c.height = th;
+  c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer), tw, th), 0, 0);
+  return new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', 0.86));
+}
+
+async function saveToLibrary() {
+  try {
+    const snapshot = structuredClone(state);
+    const now = Date.now();
+    const item = { id: newId(), name: defaultName(snapshot), created: now, updated: now, state: snapshot, thumb: await makeThumb(snapshot) };
+    await putDesign(item);
+    currentDesignId = item.id;
+    toast(`Saved “${item.name}” to the library`);
+    if (libraryIsOpen()) renderLibrary();
+  } catch (e) {
+    toast('Could not save: ' + e.message, true);
+  }
+  requestRender('view');
+}
+
+function openDesign(item) {
+  currentDesignId = item.id;
+  closeLibrary();
+  replaceState(item.state, `Opened “${item.name}”`);
+}
+
+// A button that needs a second click within 3 s to act.
+function confirmButton(label, confirmLabel, action) {
+  const b = h('button', { class: 'mini ghost' }, label);
+  let timer = 0;
+  b.addEventListener('click', async () => {
+    if (!timer) {
+      b.textContent = confirmLabel;
+      b.classList.add('armed');
+      timer = setTimeout(() => {
+        timer = 0;
+        b.textContent = label;
+        b.classList.remove('armed');
+      }, 3000);
+      return;
+    }
+    clearTimeout(timer);
+    b.disabled = true;
+    try {
+      await action();
+    } catch (e) {
+      toast(e.message, true);
+      b.disabled = false;
+    }
+  });
+  return b;
+}
+
+function libraryCard(item) {
+  const st = normalizeState(item.state);
+  const r = resolutionOf(st);
+  const url = item.thumb ? URL.createObjectURL(item.thumb) : '';
+  if (url) libUrls.push(url);
+  const name = h('input', { type: 'text', class: 'lib-name', value: item.name, spellcheck: 'false', 'aria-label': 'Design name' });
+  name.addEventListener('keydown', (e) => e.key === 'Enter' && name.blur());
+  name.addEventListener('change', async () => {
+    item.name = name.value.trim() || item.name;
+    name.value = item.name;
+    try {
+      await putDesign(item);
+    } catch (e) {
+      toast('Could not rename: ' + e.message, true);
+    }
+  });
+  const update = confirmButton('Update', 'Overwrite?', async () => {
+    item.state = structuredClone(state);
+    item.updated = Date.now();
+    item.thumb = await makeThumb(item.state);
+    await putDesign(item);
+    currentDesignId = item.id;
+    toast(`Updated “${item.name}” with the current design`);
+    renderLibrary();
+    requestRender('view');
+  });
+  const remove = confirmButton('Delete', 'Delete?', async () => {
+    await deleteDesign(item.id);
+    if (currentDesignId === item.id) currentDesignId = null;
+    renderLibrary();
+  });
+  update.title = 'Replace this saved design with what is on the canvas';
+  return h('div', { class: 'lib-card' + (item.id === currentDesignId ? ' current' : '') },
+    h('button', { class: 'lib-thumb', title: 'Open this design', onclick: () => openDesign(item) }, url ? h('img', { src: url, alt: '' }) : null),
+    name,
+    h('div', { class: 'lib-meta' }, `${SCENE_MAP[st.scene].name} · ${r.w}×${r.h} · ${fmtDate(item.updated)}`),
+    h('div', { class: 'lib-card-actions' }, h('button', { class: 'mini', onclick: () => openDesign(item) }, 'Open'), update, remove),
+  );
+}
+
+async function renderLibrary() {
+  let items;
+  try {
+    items = await listDesigns();
+  } catch (e) {
+    libEl.replaceChildren(h('div', { class: 'lib-empty' }, 'The library is not available in this browser: ' + e.message));
+    return;
+  }
+  libUrls.forEach((u) => URL.revokeObjectURL(u));
+  libUrls = [];
+  const head = h('div', { class: 'lib-head' },
+    h('div', { class: 'lib-title' }, 'Library', items.length ? h('span', { class: 'lib-count' }, String(items.length)) : null),
+    h('div', { class: 'lib-actions' },
+      h('button', { class: 'primary', onclick: saveToLibrary }, 'Save current design'),
+      h('button', { onclick: () => $('#lib-file').click(), title: 'Add designs from a library backup, settings file or exported PNG/SVG' }, 'Import…'),
+      h('button', { onclick: exportLibrary, disabled: !items.length, title: 'Download every saved design as one backup file' }, 'Export all'),
+      h('button', { class: 'icon', onclick: closeLibrary, 'aria-label': 'Close library', title: 'Close (Esc)' }, '✕'),
+    ),
+  );
+  const body = items.length
+    ? h('div', { class: 'lib-grid' }, items.map(libraryCard))
+    : h('div', { class: 'lib-empty' },
+      h('strong', null, 'Nothing saved yet'),
+      h('p', null, 'Save the current design to keep it here. You can also import a library backup, a settings file or any PNG/SVG exported from Particle Shore.'));
+  libEl.replaceChildren(head, body, h('p', { class: 'lib-note' }, 'Designs are stored in this browser. Use Export all to back them up or move them to another browser or computer.'));
+}
+
+async function exportLibrary() {
+  try {
+    const items = await listDesigns();
+    const data = {
+      app: 'particle-shore-library',
+      v: 1,
+      exported: new Date().toISOString(),
+      designs: items.map(({ id, name, created, updated, state: st }) => ({ id, name, created, updated, state: st })),
+    };
+    download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `particle-shore-library_${new Date().toISOString().slice(0, 10)}.json`);
+    toast(`Exported ${items.length} design${items.length === 1 ? '' : 's'}`);
+  } catch (e) {
+    toast('Could not export the library: ' + e.message, true);
+  }
+}
+
+async function importIntoLibrary(files) {
+  let added = 0;
+  for (const file of files) {
+    try {
+      const obj = await readSettings(file);
+      const designs = obj.app === 'particle-shore-library' ? obj.designs || [] : [{ name: file.name.replace(/\.[^.]+$/, ''), state: obj }];
+      for (const d of designs) {
+        const st = normalizeState(d.state);
+        const now = Date.now();
+        await putDesign({
+          id: typeof d.id === 'string' ? d.id : newId(),
+          name: typeof d.name === 'string' && d.name ? d.name : defaultName(st),
+          created: +d.created || now,
+          updated: +d.updated || now,
+          state: st,
+          thumb: await makeThumb(st),
+        });
+        added++;
+      }
+    } catch (e) {
+      toast(`Could not import ${file.name}: ${e.message}`, true);
+    }
+  }
+  if (added) toast(`Imported ${added} design${added === 1 ? '' : 's'} into the library`);
+  if (libraryIsOpen()) renderLibrary();
+  requestRender('view');
 }
 
 // ---------- toast / fatal ----------
@@ -710,11 +962,18 @@ $('#redo').addEventListener('click', redo);
 $('#seed').addEventListener('click', newSeed);
 $('#shuffle').addEventListener('click', randomize);
 $('#png').addEventListener('click', exportPNG);
+$('#save-btn').addEventListener('click', saveToLibrary);
+$('#lib-btn').addEventListener('click', () => (libraryIsOpen() ? closeLibrary() : openLibrary()));
 document.querySelectorAll('#viewseg button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
 $('#file').addEventListener('change', (e) => {
   const f = e.target.files[0];
   if (f) loadFile(f);
   e.target.value = '';
+});
+$('#lib-file').addEventListener('change', (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (files.length) importIntoLibrary(files);
 });
 
 window.addEventListener('keydown', (e) => {
@@ -734,11 +993,16 @@ window.addEventListener('keydown', (e) => {
   }
   if (mod && k === 's') {
     e.preventDefault();
-    saveJSON();
+    saveToLibrary();
+    return;
+  }
+  if (k === 'escape' && libraryIsOpen()) {
+    closeLibrary();
     return;
   }
   if (mod || typing || e.altKey) return;
-  if (k === 'f') setView('fit');
+  if (k === 'l') libraryIsOpen() ? closeLibrary() : openLibrary();
+  else if (k === 'f') setView('fit');
   else if (k === '1') setView('actual');
   else if (k === 'r') randomize();
   else if (k === 's') newSeed();

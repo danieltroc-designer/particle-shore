@@ -28,6 +28,9 @@
           <span class="sep"></span>
           <button id="seed" title="New seed (S)">New seed</button>
           <button id="shuffle" title="Randomize the shape (R)">Randomize</button>
+          <span class="sep"></span>
+          <button id="lib-btn" title="Your saved designs (L)">Library</button>
+          <button id="save-btn" title="Save this design to your library (⌘S)">Save</button>
           <button id="png" class="primary" title="Export PNG (E)">Export PNG</button>
         </div>
       </header>
@@ -41,6 +44,7 @@
           </div>
         </div>
         <div id="hint"></div>
+        <div id="library" hidden aria-label="Library"></div>
       </div>
       <footer id="status"><span id="st-left"></span><span id="st-right"></span></footer>
     </section>
@@ -56,6 +60,7 @@
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="drop" hidden><div>Drop a Particle Shore PNG, SVG or JSON to load its settings</div></div>
   <input type="file" id="file" accept=".json,.png,.svg,application/json,image/png,image/svg+xml" hidden>
+  <input type="file" id="lib-file" accept=".json,.png,.svg,application/json,image/png,image/svg+xml" multiple hidden>
 
   <script>
     if (location.protocol === 'file:') {
